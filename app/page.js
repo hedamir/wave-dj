@@ -268,6 +268,9 @@ export default function App() {
       setSetVibe(data.vibe || '')
       setBuildStatus('')
       setScreen('set')
+      if (data.newDiscoveries > 0) {
+        showToast(`${data.newDiscoveries} new discoveries in your set`)
+      }
       setTimeout(() => setRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
     } catch (e) {
       setBuildError('Something went wrong — please try again')
@@ -637,6 +640,7 @@ export default function App() {
                         <div style={{ minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                             <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.name}</div>
+                            {track._isNew && <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: '#E1F5EE', color: '#085041', fontWeight: 500, flexShrink: 0, whiteSpace: 'nowrap' }}>new</span>}
                           </div>
                           <div style={{ fontSize: 11, color: '#999', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 3 }}>
                             {(track.artists || []).map(a => a.name).join(', ')}
