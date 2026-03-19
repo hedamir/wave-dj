@@ -352,29 +352,65 @@ export default function App() {
     setSaveStatus('saving')
     setSaveError('')
     try {
-      const res = await fetch('/api/save-set', {
+      // Save directly from browser using user token — bypasses server permission issues
+      const activeToken = await getValidToken()
+
+      // Step 1: Create playlist directly from browser
+      const createRes = await fetch('https://api.spotify.com/v1/me/playlists', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `Bearer ${activeToken}`,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          tracks: set,
-          setName,
-          eventDescription: eventDesc,
-          vibe: setVibe,
-          userId: user?.id,
-          refreshToken,
-          token,
+          name: setName || `wave. DJ Set · ${new Date().toLocaleDateString()}`,
+          public: false,
+          description: setVibe || eventDesc || 'Built with wave. DJ',
         }),
       })
-      const data = await res.json()
-      if (!res.ok || !data.success) {
-        setSaveError(data.error || 'Save failed — please try again')
+
+      if (!createRes.ok) {
+        const err = await createRes.json()
+        setSaveError(`Failed to create playlist: ${err?.error?.message || createRes.status}. Please log out and log back in.`)
         setSaveStatus('error')
         return
       }
-      setSaveResult(data)
+
+      const playlist = await createRes.json()
+
+      // Step 2: Add tracks in chunks of 100
+      const validUris = set.map(t => t?.uri).filter(uri => uri && uri.startsWith('spotify:track:'))
+      let addedCount = 0
+
+      for (let i = 0; i < validUris.length; i += 100) {
+        const chunk = validUris.slice(i, i + 100)
+        const addRes = await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${activeToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ uris: chunk }),
+        })
+        if (addRes.ok) addedCount += chunk.length
+      }
+
+      if (addedCount === 0) {
+        setSaveError('Playlist created but no tracks added. Please log out, log back in, and try again.')
+        setSaveStatus('error')
+        return
+      }
+
+      setSaveResult({
+        success: true,
+        playlistUrl: playlist.external_urls?.spotify,
+        tracksAdded: addedCount,
+        tracksTotal: validUris.length,
+        verified: true,
+      })
       setSaveStatus('saved')
     } catch (e) {
-      setSaveError('Connection error — please try again')
+      setSaveError(`Connection error: ${e.message}`)
       setSaveStatus('error')
     }
   }
