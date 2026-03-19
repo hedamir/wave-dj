@@ -6,16 +6,22 @@ export async function POST(request) {
     anchorTracks, topTracks, likedTracks, token
   } = await request.json()
 
+  // Build taste profile — used as context only, NOT as track source
   const allLibrary = [...(topTracks || []), ...(likedTracks || [])]
   const seen = new Set()
-  const libraryProfile = allLibrary
+  const libraryTracks = allLibrary
     .filter(t => { if (!t?.id || seen.has(t.id)) return false; seen.add(t.id); return true })
     .slice(0, 40)
-    .map(t => `"${t.name}" by ${(t.artists || []).map(a => a.name).join(', ')}`)
-    .join('\n')
+
+  // Extract taste signals: genres, artists, energy patterns
+  const artistNames = [...new Set(libraryTracks.flatMap(t => (t.artists || []).map(a => a.name)))].slice(0, 20)
+  const sampleTracks = libraryTracks.slice(0, 15).map(t => `"${t.name}" by ${(t.artists || []).map(a => a.name).join(', ')}`)
+
+  // All existing track names to AVOID recommending
+  const libraryTrackNames = new Set(libraryTracks.map(t => t.name.toLowerCase()))
 
   const anchorInfo = (anchorTracks || []).length > 0
-    ? `\nANCHOR TRACKS (must include these in the set):\n${(anchorTracks || []).map((t, i) =>
+    ? `\nANCHOR TRACKS (place these at appropriate positions in the set):\n${(anchorTracks || []).map((t, i) =>
         `${i + 1}. "${t.name}" by ${(t.artists || []).map(a => a.name).join(', ')}`
       ).join('\n')}`
     : '\nNo anchor tracks — build the full set from scratch.'
@@ -37,32 +43,38 @@ export async function POST(request) {
         max_tokens: 2500,
         messages: [{
           role: 'user',
-          content: `You are an expert DJ with 15+ years experience. Build a complete ordered DJ set.
+          content: `You are an expert DJ and music curator with 15+ years experience building professional sets.
 
-EVENT: ${eventDescription}
-BPM ARC: ${bpmStart} BPM start → ${bpmPeak} BPM peak → ${bpmEnd} BPM end
+EVENT TO PREPARE FOR:
+${eventDescription}
+
+BPM ARC: Start at ${bpmStart} BPM → Peak at ${bpmPeak} BPM → Land at ${bpmEnd} BPM
 SET LENGTH: ${trackCount} tracks
 ${anchorInfo}
 
-DJ TASTE PROFILE:
-${libraryProfile}
+DJ TASTE PROFILE (use this to understand their style — do NOT copy these tracks):
+Artists they like: ${artistNames.join(', ')}
+Sample of their library: ${sampleTracks.join(' | ')}
 
-Build exactly ${trackCount} tracks. Each line must follow this EXACT format with no variations:
-TRACK: "Song Name" by Artist Name | BPM: 128 | KEY: 8A | ROLE: opening groove sets tone | TRANSITION: same key smooth push
+YOUR MISSION:
+Build a set of ${trackCount} tracks that a professional DJ would actually play at this event.
 
-Rules:
-- Song names and artists must be real songs that exist on Spotify
-- BPM must be a realistic number for the genre
-- KEY must be Camelot format like 8A or 9B
-- ROLE is max 6 words describing the track's purpose
-- TRANSITION is max 8 words describing how it leads to next track
-- Last track has TRANSITION: closing track
-- Include anchor tracks at appropriate positions
+CRITICAL RULES:
+1. DISCOVERY FOCUS — At least 70% of tracks must be songs NOT already in the DJ's library. Think like a record store owner recommending new music based on taste.
+2. REAL TRACKS ONLY — Every track must be a real song that exists on Spotify right now.
+3. BPM ARC — Follow the arc naturally. Each track's BPM should progress smoothly.
+4. HARMONIC MIXING — Use Camelot wheel. Consecutive tracks should be in compatible keys (same number ±1, or same key ±A/B).
+5. EVENT FIT — Every track must suit the event description. Think about the crowd, the time, the energy.
+6. SMOOTH NARRATIVE — The set should tell a story. Think about how a real DJ builds tension and release.
+7. ANCHOR TRACKS — Include any anchor tracks at the right energy position in the arc.
 
-After all tracks add one line:
-VIBE: one sentence describing the emotional journey max 15 words
+For each track output EXACTLY this format on one line:
+TRACK: "Song Name" by Artist Name | BPM: 128 | KEY: 8A | ROLE: opening groove sets tone | TRANSITION: same key smooth energy push
 
-Output ONLY the tracks and vibe line, nothing else.`
+After all tracks:
+VIBE: [one vivid sentence describing the emotional journey of this set, max 15 words]
+
+Output ONLY the track lines and the VIBE line. Nothing else. No numbering, no explanations.`
         }]
       })
     })
@@ -75,26 +87,23 @@ Output ONLY the tracks and vibe line, nothing else.`
     return NextResponse.json({ error: 'AI service unavailable — please try again' }, { status: 500 })
   }
 
-  if (!claudeText) {
+  if (!claudeText.trim()) {
     return NextResponse.json({ error: 'No response from AI — please try again' }, { status: 500 })
   }
 
-  // Flexible parsing — handle various quote styles and formatting
+  // Parse tracks
   const trackLines = claudeText.split('\n').filter(l => l.trim().startsWith('TRACK:'))
-  
+
   const parsedTracks = trackLines.map(line => {
-    // Extract song name — handle straight quotes, curly quotes, no quotes
     const nameMatch = line.match(/TRACK:\s*["""]?(.+?)["""]?\s+by\s+/i)
-    const artistMatch = line.match(/by\s+(.+?)\s*\|/i)
+    const artistMatch = line.match(/\bby\s+(.+?)\s*\|/i)
     const bpmMatch = line.match(/BPM:\s*(\d+)/i)
-    const keyMatch = line.match(/KEY:\s*([^\|]+)/i)
+    const keyMatch = line.match(/KEY:\s*([A-G][#b]?\s*(?:min|maj|major|minor)?|[0-9]{1,2}[AB])/i)
     const roleMatch = line.match(/ROLE:\s*([^\|]+)/i)
     const transMatch = line.match(/TRANSITION:\s*(.+)/i)
-
     if (!nameMatch || !artistMatch) return null
-
     return {
-      name: nameMatch[1].replace(/["""]/g, '').trim(),
+      name: nameMatch[1].replace(/["""'']/g, '').trim(),
       artist: artistMatch[1].trim(),
       bpm: bpmMatch ? parseInt(bpmMatch[1]) : null,
       key: keyMatch ? keyMatch[1].trim() : null,
@@ -107,22 +116,21 @@ Output ONLY the tracks and vibe line, nothing else.`
   const vibe = vibeMatch ? vibeMatch[1].trim() : ''
 
   if (!parsedTracks.length) {
-    // Log the raw response for debugging
-    console.error('Failed to parse Claude response:', claudeText.substring(0, 500))
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'Could not parse AI response — please try again',
-      debug: claudeText.substring(0, 200)
     }, { status: 500 })
   }
 
-  // Search Spotify for each track
+  // Search Spotify for each track — try multiple search strategies
   const resolvedTracks = []
+  const resolvedIds = new Set()
+
   for (const ct of parsedTracks) {
     try {
-      // Try exact search first
       let track = null
       const searches = [
         `track:"${ct.name}" artist:"${ct.artist}"`,
+        `"${ct.name}" "${ct.artist}"`,
         `${ct.name} ${ct.artist}`,
         ct.name,
       ]
@@ -130,20 +138,22 @@ Output ONLY the tracks and vibe line, nothing else.`
         if (track) break
         try {
           const res = await fetch(
-            `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=3`,
+            `https://api.spotify.com/v1/search?q=${encodeURIComponent(q)}&type=track&limit=5`,
             { headers: { Authorization: `Bearer ${token}` } }
           )
           const data = await res.json()
-          // Pick best match — prefer exact name match
           const items = data.tracks?.items || []
           track = items.find(t =>
-            t.name.toLowerCase().includes(ct.name.toLowerCase()) ||
-            ct.name.toLowerCase().includes(t.name.toLowerCase())
+            t.name.toLowerCase().includes(ct.name.toLowerCase().substring(0, 10)) &&
+            (t.artists || []).some(a => a.name.toLowerCase().includes(ct.artist.toLowerCase().split(' ')[0]))
+          ) || items.find(t =>
+            t.name.toLowerCase().includes(ct.name.toLowerCase().substring(0, 8))
           ) || items[0]
         } catch { }
       }
 
-      if (track) {
+      if (track && !resolvedIds.has(track.id)) {
+        resolvedIds.add(track.id)
         resolvedTracks.push({
           id: track.id,
           uri: track.uri,
@@ -158,15 +168,16 @@ Output ONLY the tracks and vibe line, nothing else.`
           _role: ct.role,
           _transition: ct.transition,
           _source: 'ai',
+          _isNew: !libraryTrackNames.has(track.name.toLowerCase()),
         })
       }
     } catch { }
   }
 
-  // If anchor tracks weren't found by Claude's suggestions, add them directly
-  const resolvedIds = new Set(resolvedTracks.map(t => t.id))
+  // Always include anchor tracks — add any that weren't found by Claude
   for (const anchor of (anchorTracks || [])) {
-    if (!resolvedIds.has(anchor.id) && resolvedTracks.length < trackCount) {
+    if (!resolvedIds.has(anchor.id)) {
+      resolvedIds.add(anchor.id)
       resolvedTracks.push({
         ...anchor,
         _bpm: null,
@@ -174,41 +185,48 @@ Output ONLY the tracks and vibe line, nothing else.`
         _role: 'anchor track',
         _transition: null,
         _source: 'anchor',
+        _isNew: false,
       })
-      resolvedIds.add(anchor.id)
     }
   }
 
-  // Fill remaining slots with Spotify recommendations if needed
+  // Fill remaining with Spotify recommendations if needed (from seeds based on taste, not library copy)
   if (resolvedTracks.length < Math.round(trackCount * 0.6)) {
     try {
-      const seedIds = [...(topTracks || []).slice(0, 3), ...(anchorTracks || []).slice(0, 2)]
-        .map(t => t.id).filter(Boolean).slice(0, 5)
-      
-      if (seedIds.length > 0) {
+      // Use anchor tracks + top tracks as seeds for discovery
+      const seedTracks = [
+        ...(anchorTracks || []).slice(0, 2),
+        ...(topTracks || []).slice(0, 3),
+      ].map(t => t.id).filter(Boolean).slice(0, 5)
+
+      if (seedTracks.length > 0) {
         const params = new URLSearchParams({
-          limit: String(trackCount - resolvedTracks.length),
-          seed_tracks: seedIds.join(','),
+          limit: String(Math.min(20, trackCount - resolvedTracks.length)),
+          seed_tracks: seedTracks.join(','),
           target_tempo: String(Math.round((bpmStart + bpmPeak) / 2)),
-          min_tempo: String(Math.max(60, bpmStart - 8)),
-          max_tempo: String(Math.min(200, bpmPeak + 8)),
+          min_tempo: String(Math.max(60, bpmStart - 10)),
+          max_tempo: String(Math.min(220, bpmPeak + 10)),
           target_energy: '0.8',
           target_danceability: '0.75',
+          min_popularity: '20',
         })
         const recRes = await fetch(
           `https://api.spotify.com/v1/recommendations?${params}`,
           { headers: { Authorization: `Bearer ${token}` } }
         )
         const recData = await recRes.json()
-        const fillers = (recData.tracks || [])
-          .filter(t => !resolvedIds.has(t.id))
-          .map(t => ({
-            id: t.id, uri: t.uri, name: t.name, artists: t.artists,
-            album: t.album, duration_ms: t.duration_ms,
-            preview_url: t.preview_url, external_urls: t.external_urls,
-            _bpm: null, _key: null, _role: 'similar track', _transition: null, _source: 'spotify',
-          }))
-        resolvedTracks.push(...fillers)
+        for (const t of (recData.tracks || [])) {
+          if (!resolvedIds.has(t.id)) {
+            resolvedIds.add(t.id)
+            resolvedTracks.push({
+              id: t.id, uri: t.uri, name: t.name, artists: t.artists,
+              album: t.album, duration_ms: t.duration_ms,
+              preview_url: t.preview_url, external_urls: t.external_urls,
+              _bpm: null, _key: null, _role: 'similar track', _transition: null,
+              _source: 'spotify', _isNew: !libraryTrackNames.has(t.name.toLowerCase()),
+            })
+          }
+        }
       }
     } catch { }
   }
@@ -217,9 +235,13 @@ Output ONLY the tracks and vibe line, nothing else.`
     return NextResponse.json({ error: 'Could not find tracks on Spotify — please try again' }, { status: 500 })
   }
 
+  // Count new discoveries
+  const newCount = resolvedTracks.filter(t => t._isNew).length
+
   return NextResponse.json({
     tracks: resolvedTracks,
     vibe,
     totalFound: resolvedTracks.length,
+    newDiscoveries: newCount,
   })
 }
