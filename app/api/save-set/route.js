@@ -101,7 +101,7 @@ export async function POST(request) {
     return NextResponse.json({ error: `Network error: ${e.message}` }, { status: 500 })
   }
 
-  // Step 3: Add tracks in chunks of 50 with retry
+  // Step 3: Add tracks in chunks of 50 with retry — preserving exact order
   const uris = tracks.filter(t => t?.uri).map(t => t.uri)
   let addedCount = 0
 
@@ -116,7 +116,7 @@ export async function POST(request) {
             Authorization: `Bearer ${activeToken}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ uris: chunk }),
+          body: JSON.stringify({ uris: chunk, position: i }),
         })
         if (res.ok) { addedCount += chunk.length; break }
         attempts++
