@@ -359,6 +359,7 @@ export default function App() {
           vibe: setVibe,
           userId: user?.id,
           refreshToken,
+          token,
         }),
       })
       const data = await res.json()
