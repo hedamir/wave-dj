@@ -327,11 +327,13 @@ export default function App() {
       return
     }
     if (audioRef.current) { audioRef.current.pause(); clearInterval(progressRef.current) }
-    const audio = new Audio(track.preview_url)
+    // Use proxy to avoid CORS issues with Spotify preview URLs
+    const proxyUrl = `/api/preview?url=${encodeURIComponent(track.preview_url)}`
+    const audio = new Audio(proxyUrl)
     audioRef.current = audio
     setPlayingId(track.id)
     setPlayingProgress(0)
-    audio.play()
+    audio.play().catch(() => showToast('Could not play preview'))
     progressRef.current = setInterval(() => {
       if (audio.ended) { setPlayingId(null); setPlayingProgress(0); clearInterval(progressRef.current); return }
       setPlayingProgress(audio.currentTime / 30)
