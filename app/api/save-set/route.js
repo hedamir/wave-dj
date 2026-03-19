@@ -15,47 +15,49 @@ async function getFreshToken(refreshToken) {
       refresh_token: refreshToken,
     }).toString(),
   })
-  const data = await res.json()
-  return { token: data.access_token, scope: data.scope }
+  return res.json()
 }
 
 export async function POST(request) {
-  const { tracks, setName, eventDescription, vibe, userId, refreshToken, token } = await request.json()
+  const { tracks, setName, eventDescription, vibe, refreshToken, token } = await request.json()
 
   if (!tracks?.length) return NextResponse.json({ error: 'No tracks to save' }, { status: 400 })
 
-  // Get fresh token and check its scopes
+  // Get fresh token
   let activeToken = token
-  let tokenScope = ''
-  
   if (refreshToken) {
     try {
-      const { token: fresh, scope } = await getFreshToken(refreshToken)
-      if (fresh) {
-        activeToken = fresh
-        tokenScope = scope || ''
-      }
+      const data = await getFreshToken(refreshToken)
+      if (data.access_token) activeToken = data.access_token
     } catch { }
   }
 
-  // Check if token has required scopes
-  const hasModifyScope = tokenScope.includes('playlist-modify') || tokenScope === ''
-  
+  // Get current user ID from the token itself — don't trust what frontend sends
+  let spotifyUserId
+  try {
+    const meRes = await fetch('https://api.spotify.com/v1/me', {
+      headers: { Authorization: `Bearer ${activeToken}` }
+    })
+    const me = await meRes.json()
+    spotifyUserId = me.id
+    if (!spotifyUserId) return NextResponse.json({ error: 'Could not get user ID from Spotify' }, { status: 401 })
+  } catch (e) {
+    return NextResponse.json({ error: `Auth failed: ${e.message}` }, { status: 401 })
+  }
+
   // Validate URIs
   const validUris = tracks
     .map(t => t?.uri)
     .filter(uri => uri && typeof uri === 'string' && uri.startsWith('spotify:track:'))
 
   if (!validUris.length) {
-    return NextResponse.json({
-      error: 'No valid track URIs — please rebuild the set and try again'
-    }, { status: 400 })
+    return NextResponse.json({ error: 'No valid track URIs — please rebuild the set' }, { status: 400 })
   }
 
-  // Step 1: Create playlist
+  // Create playlist using the user ID we just confirmed from the token
   let playlist
   try {
-    const createRes = await fetch('https://api.spotify.com/v1/me/playlists', {
+    const createRes = await fetch(`https://api.spotify.com/v1/users/${spotifyUserId}/playlists`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${activeToken}`,
@@ -67,94 +69,44 @@ export async function POST(request) {
         description: vibe || eventDescription || 'Built with wave. DJ',
       }),
     })
-
     if (!createRes.ok) {
       const err = await createRes.json()
-      return NextResponse.json({
-        error: `Failed to create playlist: ${err?.error?.message || createRes.status}`
-      }, { status: createRes.status })
+      return NextResponse.json({ error: `Create failed: ${err?.error?.message}` }, { status: createRes.status })
     }
     playlist = await createRes.json()
   } catch (e) {
-    return NextResponse.json({ error: `Create failed: ${e.message}` }, { status: 500 })
+    return NextResponse.json({ error: `Create exception: ${e.message}` }, { status: 500 })
   }
 
-  // Step 2: Add tracks using PUT instead of POST (replaces all tracks, avoids permission issues)
+  // Add tracks in batches using the same token
   let addedCount = 0
-  let addError = ''
-
-  // Try PUT first (set all tracks at once)
-  try {
-    const putRes = await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${activeToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ uris: validUris.slice(0, 100) }),
-    })
-
-    if (putRes.ok) {
-      addedCount = Math.min(validUris.length, 100)
-      
-      // If more than 100 tracks, add the rest with POST
-      if (validUris.length > 100) {
-        for (let i = 100; i < validUris.length; i += 100) {
-          const chunk = validUris.slice(i, i + 100)
-          const postRes = await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${activeToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ uris: chunk }),
-          })
-          if (postRes.ok) addedCount += chunk.length
-        }
-      }
-    } else {
-      const putErr = await putRes.json()
-      addError = `PUT failed (${putRes.status}): ${putErr?.error?.message}`
-
-      // Fall back to POST
-      const postRes = await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
+  for (let i = 0; i < validUris.length; i += 100) {
+    const chunk = validUris.slice(i, i + 100)
+    try {
+      const addRes = await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${activeToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ uris: validUris.slice(0, 100) }),
+        body: JSON.stringify({ uris: chunk }),
       })
-
-      if (postRes.ok) {
-        addedCount = Math.min(validUris.length, 100)
+      if (addRes.ok) {
+        addedCount += chunk.length
       } else {
-        const postErr = await postRes.json()
-        addError += ` | POST also failed (${postRes.status}): ${postErr?.error?.message}`
-        
-        // Return detailed error with scope info
-        return NextResponse.json({
-          error: `Playlist created but tracks could not be added. This is a permissions issue. Please go to wave-dj.vercel.app, log out, then log in again. Error: ${addError}. Token scopes: ${tokenScope || 'unknown'}`,
-          playlistId: playlist.id,
-          playlistUrl: playlist.external_urls?.spotify,
-        }, { status: 403 })
+        const addErr = await addRes.json()
+        // If first chunk fails, return detailed error
+        if (i === 0) {
+          return NextResponse.json({
+            error: `Tracks could not be added (${addRes.status}): ${addErr?.error?.message}. User ID used: ${spotifyUserId}. Playlist ID: ${playlist.id}`,
+            playlistUrl: playlist.external_urls?.spotify,
+          }, { status: addRes.status })
+        }
       }
+    } catch (e) {
+      if (i === 0) return NextResponse.json({ error: `Add exception: ${e.message}` }, { status: 500 })
     }
-  } catch (e) {
-    return NextResponse.json({ error: `Track add exception: ${e.message}` }, { status: 500 })
   }
-
-  // Verify
-  let finalCount = 0
-  try {
-    const check = await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}`, {
-      headers: { Authorization: `Bearer ${activeToken}` }
-    })
-    if (check.ok) {
-      const d = await check.json()
-      finalCount = d.tracks?.total || 0
-    }
-  } catch { }
 
   return NextResponse.json({
     success: true,
@@ -162,7 +114,6 @@ export async function POST(request) {
     playlistUrl: playlist.external_urls?.spotify,
     tracksAdded: addedCount,
     tracksTotal: validUris.length,
-    finalCount,
-    verified: finalCount > 0,
+    verified: addedCount > 0,
   })
 }
