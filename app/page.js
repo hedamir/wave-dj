@@ -804,52 +804,63 @@ export default function App() {
               ) : null
             })()}
 
-            {/* SAVE SECTION */}
+            {/* EXPORT SECTION */}
             <div style={s.card}>
-              <span style={s.label}>Save to Spotify</span>
+              <span style={s.label}>Export your set</span>
 
-              {saveStatus === '' && (
-                <>
-                  <input value={setName} onChange={e => setSetName(e.target.value)} placeholder="Set name..." style={{ ...s.input, marginBottom: 12 }} />
-                  <button onClick={saveSet} style={s.btnPrimary}>
-                    <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-                      <SpotifyIcon size={16} /> Save {set.length} tracks to Spotify
-                    </span>
-                  </button>
-                </>
-              )}
-
-              {saveStatus === 'saving' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 0', color: '#666', fontSize: 13 }}>
-                  <Spinner size={18} color="#1DB954" />
-                  Refreshing token · Creating playlist · Adding tracks · Verifying...
+              {/* COPY TRACKLIST */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 13, color: '#666', marginBottom: 10 }}>
+                  Copy a formatted tracklist to paste anywhere — Spotify, Notes, messages, social media.
                 </div>
-              )}
+                <button onClick={() => {
+                  const lines = set.map((t, i) => {
+                    const artists = (t.artists || []).map(a => a.name).join(', ')
+                    const bpm = t._bpm ? ` · ${t._bpm} BPM` : ''
+                    const key = t._key ? ` · ${t._key}` : ''
+                    return `${i + 1}. ${artists} — ${t.name}${bpm}${key}`
+                  })
+                  const header = setName ? `${setName}
+${'─'.repeat(40)}
+` : ''
+                  const vibe = setVibe ? `"${setVibe}"
 
-              {saveStatus === 'saved' && saveResult && (
-                <div style={{ background: '#E1F5EE', border: '0.5px solid #9FE1CB', borderRadius: 10, padding: '14px 16px' }}>
-                  <div style={{ fontSize: 14, fontWeight: 500, color: '#085041', marginBottom: 4 }}>
-                    ✓ Saved successfully
-                  </div>
-                  <div style={{ fontSize: 12, color: '#0F6E56', marginBottom: 12 }}>
-                    {saveResult.tracksAdded} tracks saved to "{setName}" · {saveResult.verified ? 'Verified ✓' : 'Check your Spotify'}
-                  </div>
-                  <a href={saveResult.playlistUrl} target="_blank" rel="noopener noreferrer"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#1DB954', color: '#fff', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 500, textDecoration: 'none' }}>
-                    <SpotifyIcon size={13} /> Open in Spotify →
-                  </a>
-                  <button onClick={() => { setSaveStatus(''); setSaveResult(null) }} style={{ ...s.btn, fontSize: 12, marginLeft: 8, padding: '7px 14px' }}>Save again</button>
-                </div>
-              )}
+` : ''
+                  const text = header + vibe + lines.join('
+')
+                  navigator.clipboard.writeText(text).then(() => showToast('Tracklist copied!')).catch(() => showToast('Could not copy — try selecting manually'))
+                }} style={s.btnPrimary}>
+                  Copy tracklist ({set.length} tracks)
+                </button>
+              </div>
 
-              {saveStatus === 'error' && (
-                <div style={{ background: '#FCEBEB', border: '0.5px solid #F09595', borderRadius: 10, padding: '14px 16px' }}>
-                  <div style={{ fontSize: 13, fontWeight: 500, color: '#791F1F', marginBottom: 6 }}>Save failed</div>
-                  <div style={{ fontSize: 12, color: '#A32D2D', marginBottom: 12 }}>{saveError}</div>
-                  <button onClick={saveSet} style={{ ...s.btnPrimary, width: 'auto', padding: '8px 18px', fontSize: 12 }}>Retry</button>
-                  <button onClick={() => setSaveStatus('')} style={{ ...s.btn, fontSize: 12, marginLeft: 8 }}>Cancel</button>
+              {/* FORMATTED TRACKLIST */}
+              <div style={{ background: '#f7f7f5', borderRadius: 10, padding: '14px 16px', fontFamily: 'monospace', fontSize: 12, color: '#555', lineHeight: 1.8, maxHeight: 220, overflowY: 'auto' }}>
+                {setVibe && <div style={{ fontStyle: 'italic', color: '#999', marginBottom: 8, fontFamily: 'inherit' }}>"{setVibe}"</div>}
+                {set.map((t, i) => {
+                  const artists = (t.artists || []).map(a => a.name).join(', ')
+                  const bpm = t._bpm ? ` · ${t._bpm} BPM` : ''
+                  const key = t._key ? ` · ${t._key}` : ''
+                  return (
+                    <div key={t.id + i} style={{ marginBottom: 2 }}>
+                      <span style={{ color: '#bbb', minWidth: 24, display: 'inline-block' }}>{i + 1}.</span>
+                      <span style={{ fontWeight: 500, color: '#1a1a1a' }}>{artists}</span>
+                      <span style={{ color: '#777' }}> — {t.name}</span>
+                      <span style={{ color: '#bbb' }}>{bpm}{key}</span>
+                    </div>
+                  )
+                })}
+              </div>
+
+              {/* SEARCH ON SPOTIFY LINK */}
+              <div style={{ marginTop: 14, padding: '12px 14px', background: '#E1F5EE', borderRadius: 10, fontSize: 12, color: '#0F6E56', lineHeight: 1.6 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>Add to Spotify manually:</div>
+                <div>1. Open Spotify → Create a new playlist</div>
+                <div>2. Search for each track and add it</div>
+                <div style={{ marginTop: 6, color: '#5DCAA5' }}>
+                  Or apply for Extended Access at developer.spotify.com to enable automatic saving.
                 </div>
-              )}
+              </div>
             </div>
 
             {/* REBUILD */}
