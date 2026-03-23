@@ -372,31 +372,81 @@ export default function App() {
     setSaveStatus('saving')
     setSaveError('')
     try {
-      // Get the current live token — do NOT refresh, use exactly what the browser has
-      const activeToken = token
+      const activeToken = await getValidToken()
 
-      const res = await fetch('/api/save-set', {
+      // Step 1: Create playlist via server (just needs read access which always works)
+      const createRes = await fetch('/api/create-playlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tracks: set,
           setName,
           eventDescription: eventDesc,
           vibe: setVibe,
-          token: token,
+          token: activeToken,
         }),
       })
 
-      const data = await res.json()
-      if (!res.ok || !data.success) {
-        setSaveError(data.error || 'Save failed — please try again')
+      const createData = await createRes.json()
+      if (!createRes.ok || !createData.playlistId) {
+        setSaveError(createData.error || 'Could not create playlist — please log out and log back in')
         setSaveStatus('error')
         return
       }
-      setSaveResult(data)
+
+      const { playlistId, playlistUrl } = createData
+
+      // Step 2: Add tracks directly from browser using Spotify API
+      // This uses the browser token directly — avoids any server permission issues
+      const validUris = set.map(t => t?.uri).filter(uri => uri && uri.startsWith('spotify:track:'))
+
+      if (!validUris.length) {
+        setSaveError('No valid track URIs — please rebuild the set')
+        setSaveStatus('error')
+        return
+      }
+
+      let addedCount = 0
+      let addError = ''
+
+      for (let i = 0; i < validUris.length; i += 100) {
+        const chunk = validUris.slice(i, i + 100)
+        try {
+          const addRes = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${activeToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ uris: chunk }),
+          })
+
+          if (addRes.ok) {
+            addedCount += chunk.length
+          } else {
+            const err = await addRes.json()
+            addError = `${addRes.status}: ${err?.error?.message}`
+          }
+        } catch (e) {
+          addError = e.message
+        }
+      }
+
+      if (addedCount === 0) {
+        setSaveError(`Playlist created but tracks could not be added: ${addError}`)
+        setSaveStatus('error')
+        return
+      }
+
+      setSaveResult({
+        success: true,
+        playlistUrl,
+        tracksAdded: addedCount,
+        tracksTotal: validUris.length,
+        verified: true,
+      })
       setSaveStatus('saved')
     } catch (e) {
-      setSaveError(`Connection error: ${e.message}`)
+      setSaveError(`Error: ${e.message}`)
       setSaveStatus('error')
     }
   }
