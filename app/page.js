@@ -1,7 +1,6 @@
 'use client'
 import { useEffect, useState, useCallback, useRef } from 'react'
 
-// ── HELPERS ───────────────────────────────────────────────────────
 function fmtDur(ms) {
   const s = Math.round(ms / 1000)
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
@@ -36,10 +35,9 @@ function getCompatScore(keyA, keyB) {
   return 'clash'
 }
 
-// ── COMPONENTS ────────────────────────────────────────────────────
 function Spinner({ size = 16, color = '#888' }) {
   return (
-    <div style={{ width: size, height: size, border: `2px solid rgba(0,0,0,0.1)`, borderTopColor: color, borderRadius: '50%', animation: 'spin 0.7s linear infinite', flexShrink: 0 }}>
+    <div style={{ width: size, height: size, border: '2px solid rgba(0,0,0,0.1)', borderTopColor: color, borderRadius: '50%', animation: 'spin 0.7s linear infinite', flexShrink: 0 }}>
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
@@ -49,48 +47,37 @@ function AlbumArt({ images = [], size = 44 }) {
   const url = images?.[0]?.url
   return (
     <div style={{ width: size, height: size, borderRadius: 6, background: '#f0f0ee', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      {url ? <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> :
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.2 }}><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>}
+      {url
+        ? <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ opacity: 0.2 }}><path d="M9 18V5l12-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="18" cy="16" r="3" /></svg>}
     </div>
   )
 }
 
 function BpmArcViz({ start, peak, end }) {
-  const pts = [
-    [20, 70], [100, 20], [180, 70]
-  ]
-  const labels = [
-    { x: 20, y: 88, text: `${start}` },
-    { x: 100, y: 14, text: `${peak}` },
-    { x: 180, y: 88, text: `${end}` },
-  ]
-  const path = `M ${pts[0][0]} ${pts[0][1]} Q ${pts[1][0]} ${pts[1][1]} ${pts[2][0]} ${pts[2][1]}`
+  const path = `M 20 70 Q 100 20 180 70`
   return (
     <svg width="200" height="96" viewBox="0 0 200 96" style={{ overflow: 'visible' }}>
       <path d={path} fill="none" stroke="rgba(0,0,0,0.12)" strokeWidth="2" strokeLinecap="round" />
       <path d={path} fill="none" stroke="#1DB954" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="4 3" />
-      {pts.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="4" fill={i === 1 ? '#1DB954' : '#1a1a1a'} />)}
-      {labels.map((l, i) => <text key={i} x={l.x} y={l.y} textAnchor="middle" fontSize="10" fontWeight="500" fill="#666" fontFamily="-apple-system,sans-serif">{l.text} BPM</text>)}
+      {[[20,70],[100,20],[180,70]].map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="4" fill={i === 1 ? '#1DB954' : '#1a1a1a'} />)}
+      {[{x:20,y:88,t:`${start} BPM`},{x:100,y:14,t:`${peak} BPM`},{x:180,y:88,t:`${end} BPM`}].map((l, i) =>
+        <text key={i} x={l.x} y={l.y} textAnchor="middle" fontSize="10" fontWeight="500" fill="#666" fontFamily="-apple-system,sans-serif">{l.t}</text>
+      )}
     </svg>
   )
 }
 
-// ── MAIN APP ──────────────────────────────────────────────────────
 export default function App() {
-  // Auth
   const [token, setToken] = useState(null)
   const [refreshToken, setRefreshToken] = useState(null)
   const [issuedAt, setIssuedAt] = useState(null)
   const [user, setUser] = useState(null)
-
-  // Library
   const [topTracks, setTopTracks] = useState([])
   const [likedTracks, setLikedTracks] = useState([])
   const [playlists, setPlaylists] = useState([])
   const [libraryReady, setLibraryReady] = useState(false)
-
-  // Set builder state
-  const [screen, setScreen] = useState('connect') // connect | setup | building | set | saving | saved
+  const [screen, setScreen] = useState('connect')
   const [eventDesc, setEventDesc] = useState('')
   const [bpmStart, setBpmStart] = useState(122)
   const [bpmPeak, setBpmPeak] = useState(132)
@@ -101,40 +88,28 @@ export default function App() {
   const [anchorSearch, setAnchorSearch] = useState('')
   const [anchorResults, setAnchorResults] = useState([])
   const [anchorSearching, setAnchorSearching] = useState(false)
-
-  // Generated set
   const [set, setSet] = useState([])
   const [setVibe, setSetVibe] = useState('')
   const [buildStatus, setBuildStatus] = useState('')
   const [buildError, setBuildError] = useState('')
-
-  // Swap
   const [swappingIndex, setSwappingIndex] = useState(null)
   const [swapAlts, setSwapAlts] = useState([])
   const [swapLoading, setSwapLoading] = useState(false)
-
-  // Preview
   const [playingId, setPlayingId] = useState(null)
   const [playingProgress, setPlayingProgress] = useState(0)
   const audioRef = useRef(null)
   const progressRef = useRef(null)
-
-  // Save
-  const [saveStatus, setSaveStatus] = useState('') // '' | 'saving' | 'saved' | 'error'
-  const [saveResult, setSaveResult] = useState(null)
-  const [saveError, setSaveError] = useState('')
   const [setName, setSetName] = useState('')
-
+  const [copied, setCopied] = useState(false)
   const [toast, setToast] = useState('')
   const setRef = useRef(null)
 
   const showToast = msg => { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
-  // ── TOKEN MANAGEMENT ─────────────────────────────────────────────
   const getValidToken = useCallback(async () => {
     if (!refreshToken) return token
     const age = Date.now() - (issuedAt || 0)
-    if (age < 45 * 60 * 1000 && token) return token // still fresh
+    if (age < 45 * 60 * 1000 && token) return token
     try {
       const res = await fetch('/api/refresh', {
         method: 'POST',
@@ -151,7 +126,6 @@ export default function App() {
     return token
   }, [token, refreshToken, issuedAt])
 
-  // Proactive refresh every 45 min
   useEffect(() => {
     if (!refreshToken) return
     const interval = setInterval(() => getValidToken(), 45 * 60 * 1000)
@@ -165,44 +139,22 @@ export default function App() {
     return r.json()
   }, [getValidToken])
 
-  // ── PARSE TOKEN FROM URL ─────────────────────────────────────────
   useEffect(() => {
-    // Read token from cookie (set by server at login)
-    const getCookie = name => {
-      const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
-      return match ? match[2] : null
-    }
-    
     const hash = window.location.hash.substring(1)
     if (hash) {
       const p = new URLSearchParams(hash)
-      if (p.get('logged_in') === 'true') {
-        // Token is in cookie, read it from there
-        const at = getCookie('sp_access_token')
-        const rt = getCookie('sp_refresh_token')
-        const ia = p.get('issued_at')
-        if (at) {
-          setToken(at)
-          if (rt) setRefreshToken(rt)
-          if (ia) setIssuedAt(parseInt(ia))
-        }
+      const at = p.get('access_token'), rt = p.get('refresh_token'), ia = p.get('issued_at')
+      if (at) {
+        setToken(at)
+        if (rt) setRefreshToken(rt)
+        if (ia) setIssuedAt(parseInt(ia))
         window.history.replaceState({}, '', '/')
-      } else {
-        // Legacy hash token support
-        const at = p.get('access_token'), rt = p.get('refresh_token'), ia = p.get('issued_at')
-        if (at) {
-          setToken(at)
-          if (rt) setRefreshToken(rt)
-          if (ia) setIssuedAt(parseInt(ia))
-          window.history.replaceState({}, '', '/')
-        }
       }
     }
     const urlParams = new URLSearchParams(window.location.search)
     if (urlParams.get('error')) showToast('Login failed — please try again')
   }, [])
 
-  // ── LOAD USER + LIBRARY ──────────────────────────────────────────
   useEffect(() => {
     if (!token) return
     spFetch('https://api.spotify.com/v1/me').then(u => {
@@ -227,7 +179,6 @@ export default function App() {
     } catch { setLibraryReady(true) }
   }
 
-  // ── ANCHOR TRACK SEARCH ──────────────────────────────────────────
   async function searchAnchors(q) {
     if (!q.trim()) { setAnchorResults([]); return }
     setAnchorSearching(true)
@@ -255,14 +206,12 @@ export default function App() {
     setAnchorTracks(prev => prev.filter(t => t.id !== id))
   }
 
-  // ── BUILD SET ────────────────────────────────────────────────────
   async function buildSet() {
     if (!eventDesc.trim()) { showToast('Please describe your event first'); return }
     setScreen('building')
     setBuildError('')
     setBuildStatus('Claude is reading your event...')
     setSet([])
-
     try {
       const t = await getValidToken()
       setBuildStatus('Building your set narrative...')
@@ -288,17 +237,13 @@ export default function App() {
       setSetVibe(data.vibe || '')
       setBuildStatus('')
       setScreen('set')
-      if (data.newDiscoveries > 0) {
-        showToast(`${data.newDiscoveries} new discoveries in your set`)
-      }
       setTimeout(() => setRef.current?.scrollIntoView({ behavior: 'smooth' }), 100)
-    } catch (e) {
+    } catch {
       setBuildError('Something went wrong — please try again')
       setScreen('setup')
     }
   }
 
-  // ── SWAP TRACK ───────────────────────────────────────────────────
   async function startSwap(index) {
     setSwappingIndex(index)
     setSwapAlts([])
@@ -322,10 +267,7 @@ export default function App() {
     setSwapAlts([])
   }
 
-  function cancelSwap() {
-    setSwappingIndex(null)
-    setSwapAlts([])
-  }
+  function cancelSwap() { setSwappingIndex(null); setSwapAlts([]) }
 
   function moveTrack(index, dir) {
     const newSet = [...set]
@@ -339,7 +281,6 @@ export default function App() {
     setSet(prev => prev.filter((_, i) => i !== index))
   }
 
-  // ── PREVIEW ──────────────────────────────────────────────────────
   function togglePreview(track) {
     if (!track.preview_url) { showToast('No preview available for this track'); return }
     if (playingId === track.id) {
@@ -350,7 +291,6 @@ export default function App() {
       return
     }
     if (audioRef.current) { audioRef.current.pause(); clearInterval(progressRef.current) }
-    // Use proxy to avoid CORS issues with Spotify preview URLs
     const proxyUrl = `/api/preview?url=${encodeURIComponent(track.preview_url)}`
     const audio = new Audio(proxyUrl)
     audioRef.current = audio
@@ -366,102 +306,30 @@ export default function App() {
 
   useEffect(() => () => { audioRef.current?.pause(); clearInterval(progressRef.current) }, [])
 
-  // ── SAVE SET ─────────────────────────────────────────────────────
-  async function saveSet() {
-    if (!set.length) return
-    setSaveStatus('saving')
-    setSaveError('')
-    try {
-      const activeToken = await getValidToken()
-
-      // Step 1: Create playlist via server (just needs read access which always works)
-      const createRes = await fetch('/api/create-playlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          setName,
-          eventDescription: eventDesc,
-          vibe: setVibe,
-          token: activeToken,
-        }),
-      })
-
-      const createData = await createRes.json()
-      if (!createRes.ok || !createData.playlistId) {
-        setSaveError(createData.error || 'Could not create playlist — please log out and log back in')
-        setSaveStatus('error')
-        return
-      }
-
-      const { playlistId, playlistUrl } = createData
-
-      // Step 2: Add tracks directly from browser using Spotify API
-      // This uses the browser token directly — avoids any server permission issues
-      const validUris = set.map(t => t?.uri).filter(uri => uri && uri.startsWith('spotify:track:'))
-
-      if (!validUris.length) {
-        setSaveError('No valid track URIs — please rebuild the set')
-        setSaveStatus('error')
-        return
-      }
-
-      let addedCount = 0
-      let addError = ''
-
-      for (let i = 0; i < validUris.length; i += 100) {
-        const chunk = validUris.slice(i, i + 100)
-        try {
-          const addRes = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks`, {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${activeToken}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ uris: chunk }),
-          })
-
-          if (addRes.ok) {
-            addedCount += chunk.length
-          } else {
-            const err = await addRes.json()
-            addError = `${addRes.status}: ${err?.error?.message}`
-          }
-        } catch (e) {
-          addError = e.message
-        }
-      }
-
-      if (addedCount === 0) {
-        setSaveError(`Playlist created but tracks could not be added: ${addError}`)
-        setSaveStatus('error')
-        return
-      }
-
-      setSaveResult({
-        success: true,
-        playlistUrl,
-        tracksAdded: addedCount,
-        tracksTotal: validUris.length,
-        verified: true,
-      })
-      setSaveStatus('saved')
-    } catch (e) {
-      setSaveError(`Error: ${e.message}`)
-      setSaveStatus('error')
-    }
+  function copyTracklist() {
+    const lines = set.map((t, i) => {
+      const artists = (t.artists || []).map(a => a.name).join(', ')
+      const bpm = t._bpm ? ` · ${t._bpm} BPM` : ''
+      const key = t._key ? ` · ${t._key}` : ''
+      return `${i + 1}. ${artists} — ${t.name}${bpm}${key}`
+    })
+    const header = setName ? `${setName}\n${'─'.repeat(40)}\n` : ''
+    const vibe = setVibe ? `"${setVibe}"\n\n` : ''
+    const text = header + vibe + lines.join('\n')
+    navigator.clipboard.writeText(text)
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); showToast('Tracklist copied!') })
+      .catch(() => showToast('Copy failed — try selecting manually'))
   }
 
-  // ── SHARED STYLES ─────────────────────────────────────────────────
   const s = {
     app: { fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif', background: '#f5f5f3', minHeight: '100vh' },
     topbar: { background: '#fff', borderBottom: '0.5px solid rgba(0,0,0,0.08)', padding: '12px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 20 },
-    logo: { fontSize: 16, fontWeight: 500, letterSpacing: -0.5 },
     main: { maxWidth: 680, margin: '0 auto', padding: '28px 20px' },
     card: { background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, padding: '20px 22px', marginBottom: 14 },
     label: { fontSize: 10, fontWeight: 500, color: '#aaa', letterSpacing: '0.8px', textTransform: 'uppercase', marginBottom: 10, display: 'block' },
     title: { fontSize: 22, fontWeight: 500, letterSpacing: -0.4, marginBottom: 6 },
     sub: { fontSize: 13, color: '#888', lineHeight: 1.6, marginBottom: 20 },
-    input: { width: '100%', padding: '11px 14px', borderRadius: 10, border: '0.5px solid rgba(0,0,0,0.15)', background: '#fafaf8', fontSize: 14, fontFamily: 'inherit', outline: 'none', resize: 'vertical' },
+    input: { width: '100%', padding: '11px 14px', borderRadius: 10, border: '0.5px solid rgba(0,0,0,0.15)', background: '#fafaf8', fontSize: 14, fontFamily: 'inherit', outline: 'none', resize: 'vertical', boxSizing: 'border-box' },
     btn: { padding: '10px 18px', borderRadius: 10, fontSize: 13, fontFamily: 'inherit', cursor: 'pointer', border: '0.5px solid rgba(0,0,0,0.12)', background: '#fff', color: '#555', transition: 'all 0.15s' },
     btnPrimary: { padding: '13px 24px', borderRadius: 12, fontSize: 14, fontFamily: 'inherit', cursor: 'pointer', border: 'none', background: '#1a1a1a', color: '#fff', fontWeight: 500, width: '100%', transition: 'opacity 0.15s' },
     btnSpotify: { display: 'inline-flex', alignItems: 'center', gap: 8, background: '#1DB954', color: '#fff', borderRadius: 28, padding: '12px 28px', fontSize: 14, fontWeight: 500, textDecoration: 'none', border: 'none', cursor: 'pointer', fontFamily: 'inherit' },
@@ -474,9 +342,6 @@ export default function App() {
     </svg>
   )
 
-  // ── SCREENS ───────────────────────────────────────────────────────
-
-  // CONNECT
   if (screen === 'connect') return (
     <div style={{ ...s.app, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', textAlign: 'center', padding: '0 24px' }}>
       <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#1DB954', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 22 }}>
@@ -484,14 +349,13 @@ export default function App() {
       </div>
       <div style={{ fontSize: 28, fontWeight: 500, letterSpacing: -0.8, marginBottom: 8 }}>wave. <span style={{ color: '#1DB954' }}>DJ</span></div>
       <div style={{ fontSize: 15, color: '#888', lineHeight: 1.7, marginBottom: 10, maxWidth: 320 }}>Build perfect DJ sets with AI.</div>
-      <div style={{ fontSize: 13, color: '#bbb', lineHeight: 1.7, marginBottom: 32, maxWidth: 300 }}>Describe your event. AI builds a smooth, ordered set from your Spotify library. Preview every track. Save to Spotify.</div>
+      <div style={{ fontSize: 13, color: '#bbb', lineHeight: 1.7, marginBottom: 32, maxWidth: 300 }}>Describe your event. AI builds a smooth, ordered set from your Spotify library. Preview every track.</div>
       <a href="/api/auth/login" style={s.btnSpotify}>
         <SpotifyIcon size={16} /> Log in with Spotify
       </a>
     </div>
   )
 
-  // BUILDING
   if (screen === 'building') return (
     <div style={{ ...s.app, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', textAlign: 'center', padding: '0 24px' }}>
       <Spinner size={28} color="#1DB954" />
@@ -502,9 +366,8 @@ export default function App() {
 
   return (
     <div style={s.app}>
-      {/* TOPBAR */}
       <div style={s.topbar}>
-        <div style={s.logo}>wave. <span style={{ color: '#1DB954' }}>DJ</span></div>
+        <div style={{ fontSize: 16, fontWeight: 500, letterSpacing: -0.5 }}>wave. <span style={{ color: '#1DB954' }}>DJ</span></div>
         {user && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {user.images?.[0]?.url && <img src={user.images[0].url} alt="" style={{ width: 26, height: 26, borderRadius: '50%', objectFit: 'cover' }} />}
@@ -520,11 +383,10 @@ export default function App() {
 
       <div style={s.main}>
 
-        {/* ── SETUP SCREEN ── */}
         {screen === 'setup' && (
           <div>
             <div style={s.title}>Build your set</div>
-            <div style={s.sub}>Describe your event and AI builds a perfectly ordered set from your Spotify library.</div>
+            <div style={s.sub}>Describe your event and AI builds a perfectly ordered set.</div>
 
             {buildError && (
               <div style={{ background: '#FCEBEB', border: '0.5px solid #F09595', borderRadius: 10, padding: '12px 16px', fontSize: 13, color: '#791F1F', marginBottom: 14 }}>
@@ -532,7 +394,6 @@ export default function App() {
               </div>
             )}
 
-            {/* EVENT DESCRIPTION */}
             <div style={s.card}>
               <span style={s.label}>Describe your event</span>
               <textarea
@@ -545,29 +406,22 @@ export default function App() {
               <div style={{ fontSize: 11, color: '#bbb', marginTop: 8 }}>The more detail you give, the better the set. Include: venue, crowd, time, genre, your slot.</div>
             </div>
 
-            {/* BPM ARC */}
             <div style={s.card}>
               <span style={s.label}>BPM arc</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11, color: '#aaa', marginBottom: 6, textAlign: 'center' }}>Start</div>
-                  <input type="number" value={bpmStart} onChange={e => setBpmStart(+e.target.value)} min={60} max={200} style={s.bpmInput} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11, color: '#aaa', marginBottom: 6, textAlign: 'center' }}>Peak</div>
-                  <input type="number" value={bpmPeak} onChange={e => setBpmPeak(+e.target.value)} min={60} max={200} style={{ ...s.bpmInput, color: '#1DB954' }} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11, color: '#aaa', marginBottom: 6, textAlign: 'center' }}>End</div>
-                  <input type="number" value={bpmEnd} onChange={e => setBpmEnd(+e.target.value)} min={60} max={200} style={s.bpmInput} />
-                </div>
+                {[['Start', bpmStart, setBpmStart], ['Peak', bpmPeak, setBpmPeak], ['End', bpmEnd, setBpmEnd]].map(([label, val, setter]) => (
+                  <div key={label} style={{ flex: 1 }}>
+                    <div style={{ fontSize: 11, color: '#aaa', marginBottom: 6, textAlign: 'center' }}>{label}</div>
+                    <input type="number" value={val} onChange={e => setter(+e.target.value)} min={60} max={200}
+                      style={{ ...s.bpmInput, color: label === 'Peak' ? '#1DB954' : '#1a1a1a' }} />
+                  </div>
+                ))}
               </div>
               <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
                 <BpmArcViz start={bpmStart} peak={bpmPeak} end={bpmEnd} />
               </div>
             </div>
 
-            {/* SET LENGTH */}
             <div style={s.card}>
               <span style={s.label}>Set length</span>
               <div style={{ display: 'flex', gap: 8 }}>
@@ -577,7 +431,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* ANCHOR TRACKS — OPTIONAL */}
             <div style={s.card}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: showAnchorPanel ? 14 : 0 }}>
                 <div>
@@ -588,22 +441,12 @@ export default function App() {
                   {showAnchorPanel ? 'Hide' : anchorTracks.length > 0 ? `${anchorTracks.length} selected` : '+ Add tracks'}
                 </button>
               </div>
-
               {!showAnchorPanel && anchorTracks.length === 0 && (
-                <div style={{ fontSize: 12, color: '#bbb', lineHeight: 1.6 }}>
-                  Pick tracks you definitely want in your set. AI fills the gaps around them.
-                </div>
+                <div style={{ fontSize: 12, color: '#bbb', lineHeight: 1.6 }}>Pick tracks you definitely want in your set. AI fills the gaps around them.</div>
               )}
-
               {showAnchorPanel && (
                 <div>
-                  <input
-                    type="text"
-                    value={anchorSearch}
-                    onChange={e => setAnchorSearch(e.target.value)}
-                    placeholder="Search for a track..."
-                    style={{ ...s.input, marginBottom: 10 }}
-                  />
+                  <input type="text" value={anchorSearch} onChange={e => setAnchorSearch(e.target.value)} placeholder="Search for a track..." style={{ ...s.input, marginBottom: 10 }} />
                   {anchorSearching && <div style={{ display: 'flex', justifyContent: 'center', padding: '12px 0' }}><Spinner /></div>}
                   {anchorResults.map(t => (
                     <div key={t.id} onClick={() => addAnchor(t)}
@@ -618,7 +461,6 @@ export default function App() {
                       <div style={{ marginLeft: 'auto', fontSize: 18, color: '#1DB954', flexShrink: 0 }}>+</div>
                     </div>
                   ))}
-
                   {anchorTracks.length > 0 && (
                     <div style={{ marginTop: 12 }}>
                       <div style={{ fontSize: 11, color: '#aaa', marginBottom: 8 }}>Selected anchors:</div>
@@ -638,7 +480,6 @@ export default function App() {
               )}
             </div>
 
-            {/* BUILD BUTTON */}
             <button onClick={buildSet} disabled={!eventDesc.trim() || !libraryReady}
               style={{ ...s.btnPrimary, opacity: !eventDesc.trim() || !libraryReady ? 0.5 : 1, cursor: !eventDesc.trim() || !libraryReady ? 'not-allowed' : 'pointer' }}>
               {!libraryReady ? 'Loading your library...' : 'Build my set ✦'}
@@ -646,39 +487,30 @@ export default function App() {
           </div>
         )}
 
-        {/* ── SET SCREEN ── */}
         {screen === 'set' && (
           <div ref={setRef}>
-            {/* HEADER */}
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6, gap: 12 }}>
               <div>
                 <div style={s.title}>Your set</div>
                 {setVibe && <div style={{ fontSize: 13, color: '#888', fontStyle: 'italic', marginBottom: 4 }}>"{setVibe}"</div>}
                 <div style={{ fontSize: 12, color: '#aaa' }}>{set.length} tracks · {fmtTotalDur(set)}</div>
               </div>
-              <button onClick={() => { setScreen('setup'); setSaveStatus(''); setSaveResult(null) }} style={{ ...s.btn, fontSize: 12, padding: '7px 14px', flexShrink: 0 }}>← Edit</button>
+              <button onClick={() => setScreen('setup')} style={{ ...s.btn, fontSize: 12, padding: '7px 14px', flexShrink: 0 }}>← Edit</button>
             </div>
 
-            {/* BPM ARC VIZ */}
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
               <BpmArcViz start={bpmStart} peak={bpmPeak} end={bpmEnd} />
             </div>
 
-            {/* LEGEND */}
             <div style={{ display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap', fontSize: 11 }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#aaa' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#1DB954', display: 'inline-block' }} /> Perfect mix
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#aaa' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#EF9F27', display: 'inline-block' }} /> Manageable
-              </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#aaa' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#bbb', display: 'inline-block' }} /> Unknown
-              </span>
-              <span style={{ color: '#aaa' }}>· Tap ▶ to preview · Tap track to swap</span>
+              {[['#1DB954', 'Perfect mix'], ['#EF9F27', 'Manageable'], ['#bbb', 'Unknown']].map(([color, label]) => (
+                <span key={label} style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#aaa' }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: color, display: 'inline-block' }} /> {label}
+                </span>
+              ))}
+              <span style={{ color: '#aaa' }}>· Tap ▶ to preview · Tap ⇄ to swap</span>
             </div>
 
-            {/* TRACK LIST */}
             <div style={{ background: '#fff', border: '0.5px solid rgba(0,0,0,0.08)', borderRadius: 14, overflow: 'hidden', marginBottom: 16 }}>
               {set.map((track, i) => {
                 const nextTrack = set[i + 1]
@@ -689,13 +521,9 @@ export default function App() {
 
                 return (
                   <div key={track.id + i}>
-                    {/* TRACK ROW */}
                     <div style={{ padding: '0 14px' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '24px 44px 1fr auto', gap: 10, alignItems: 'center', padding: '12px 0', borderBottom: isSwapping ? 'none' : '0.5px solid rgba(0,0,0,0.05)', background: isSwapping ? '#fafaf8' : 'transparent' }}>
-                        {/* Track number */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '24px 44px 1fr auto', gap: 10, alignItems: 'center', padding: '12px 0', borderBottom: isSwapping ? 'none' : '0.5px solid rgba(0,0,0,0.05)' }}>
                         <div style={{ fontSize: 11, color: '#ccc', textAlign: 'center', fontFamily: 'monospace' }}>{i + 1}</div>
-
-                        {/* Album art + play button */}
                         <div style={{ position: 'relative', cursor: 'pointer' }} onClick={() => togglePreview(track)}>
                           <AlbumArt images={track.album?.images} size={44} />
                           <div style={{ position: 'absolute', inset: 0, borderRadius: 6, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isPlaying ? 1 : 0, transition: 'opacity 0.15s' }}
@@ -707,12 +535,10 @@ export default function App() {
                           </div>
                           {!track.preview_url && <div style={{ position: 'absolute', bottom: 2, right: 2, width: 8, height: 8, borderRadius: '50%', background: '#ccc', border: '1px solid #fff' }} />}
                         </div>
-
-                        {/* Track info */}
                         <div style={{ minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                             <div style={{ fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.name}</div>
-                            {track._isNew && <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: '#E1F5EE', color: '#085041', fontWeight: 500, flexShrink: 0, whiteSpace: 'nowrap' }}>new</span>}
+                            {track._isNew && <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 8, background: '#E1F5EE', color: '#085041', fontWeight: 500, flexShrink: 0 }}>new</span>}
                           </div>
                           <div style={{ fontSize: 11, color: '#999', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginBottom: 3 }}>
                             {(track.artists || []).map(a => a.name).join(', ')}
@@ -723,28 +549,24 @@ export default function App() {
                             {track._role && <span style={{ fontSize: 10, color: '#bbb' }}>· {track._role}</span>}
                           </div>
                         </div>
-
-                        {/* Actions */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
                           <div style={{ display: 'flex', gap: 4 }}>
-                            <button onClick={() => moveTrack(i, -1)} disabled={i === 0} style={{ width: 24, height: 24, borderRadius: 6, border: '0.5px solid rgba(0,0,0,0.1)', background: '#fff', cursor: i === 0 ? 'not-allowed' : 'pointer', opacity: i === 0 ? 0.3 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#666' }}>↑</button>
-                            <button onClick={() => moveTrack(i, 1)} disabled={i === set.length - 1} style={{ width: 24, height: 24, borderRadius: 6, border: '0.5px solid rgba(0,0,0,0.1)', background: '#fff', cursor: i === set.length - 1 ? 'not-allowed' : 'pointer', opacity: i === set.length - 1 ? 0.3 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, color: '#666' }}>↓</button>
+                            <button onClick={() => moveTrack(i, -1)} disabled={i === 0} style={{ width: 24, height: 24, borderRadius: 6, border: '0.5px solid rgba(0,0,0,0.1)', background: '#fff', cursor: i === 0 ? 'not-allowed' : 'pointer', opacity: i === 0 ? 0.3 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>↑</button>
+                            <button onClick={() => moveTrack(i, 1)} disabled={i === set.length - 1} style={{ width: 24, height: 24, borderRadius: 6, border: '0.5px solid rgba(0,0,0,0.1)', background: '#fff', cursor: i === set.length - 1 ? 'not-allowed' : 'pointer', opacity: i === set.length - 1 ? 0.3 : 1, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11 }}>↓</button>
                           </div>
                           <div style={{ display: 'flex', gap: 4 }}>
-                            <button onClick={() => startSwap(i)} style={{ width: 24, height: 24, borderRadius: 6, border: '0.5px solid rgba(0,0,0,0.1)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: '#666' }} title="Swap track">⇄</button>
-                            <button onClick={() => removeTrack(i)} style={{ width: 24, height: 24, borderRadius: 6, border: '0.5px solid rgba(0,0,0,0.1)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: '#bbb' }} title="Remove">×</button>
+                            <button onClick={() => startSwap(i)} style={{ width: 24, height: 24, borderRadius: 6, border: '0.5px solid rgba(0,0,0,0.1)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10 }}>⇄</button>
+                            <button onClick={() => removeTrack(i)} style={{ width: 24, height: 24, borderRadius: 6, border: '0.5px solid rgba(0,0,0,0.1)', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, color: '#bbb' }}>×</button>
                           </div>
                         </div>
                       </div>
 
-                      {/* PROGRESS BAR for playing track */}
                       {isPlaying && (
                         <div style={{ height: 2, background: 'rgba(0,0,0,0.06)', borderRadius: 1, marginBottom: 8, marginTop: -4 }}>
                           <div style={{ height: '100%', background: '#1DB954', borderRadius: 1, width: `${playingProgress * 100}%`, transition: 'width 0.1s linear' }} />
                         </div>
                       )}
 
-                      {/* SWAP PANEL */}
                       {isSwapping && (
                         <div style={{ background: '#fafaf8', borderRadius: 10, padding: '12px 0', marginBottom: 10 }}>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -772,12 +594,11 @@ export default function App() {
                       )}
                     </div>
 
-                    {/* TRANSITION CONNECTOR */}
                     {nextTrack && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 14px', background: 'rgba(0,0,0,0.015)' }}>
                         <div style={{ width: 6, height: 6, borderRadius: '50%', background: compatColor, flexShrink: 0 }} />
                         <div style={{ fontSize: 10, color: '#bbb', flex: 1 }}>
-                          {track._transition || `${track._key} → ${nextTrack._key} · ${nextTrack._bpm ? (nextTrack._bpm - (track._bpm || 0) > 0 ? '+' : '') + (nextTrack._bpm - (track._bpm || 0)) + ' BPM' : ''}`}
+                          {track._transition || `${track._key || '?'} → ${nextTrack._key || '?'} · ${nextTrack._bpm && track._bpm ? (nextTrack._bpm - track._bpm > 0 ? '+' : '') + (nextTrack._bpm - track._bpm) + ' BPM' : ''}`}
                         </div>
                       </div>
                     )}
@@ -786,7 +607,6 @@ export default function App() {
               })}
             </div>
 
-            {/* MINI PLAYER */}
             {playingId && (() => {
               const pt = set.find(t => t.id === playingId)
               return pt ? (
@@ -804,68 +624,32 @@ export default function App() {
               ) : null
             })()}
 
-            {/* EXPORT SECTION */}
             <div style={s.card}>
-              <span style={s.label}>Export your set</span>
-
-              {/* COPY TRACKLIST */}
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 13, color: '#666', marginBottom: 10 }}>
-                  Copy a formatted tracklist to paste anywhere — Spotify, Notes, messages, social media.
-                </div>
-                <button onClick={() => {
-                  const lines = set.map((t, i) => {
-                    const artists = (t.artists || []).map(a => a.name).join(', ')
-                    const bpm = t._bpm ? ` · ${t._bpm} BPM` : ''
-                    const key = t._key ? ` · ${t._key}` : ''
-                    return `${i + 1}. ${artists} — ${t.name}${bpm}${key}`
-                  })
-                  const header = setName ? `${setName}
-${'─'.repeat(40)}
-` : ''
-                  const vibe = setVibe ? `"${setVibe}"
-
-` : ''
-                  const text = header + vibe + lines.join('
-')
-                  navigator.clipboard.writeText(text).then(() => showToast('Tracklist copied!')).catch(() => showToast('Could not copy — try selecting manually'))
-                }} style={s.btnPrimary}>
-                  Copy tracklist ({set.length} tracks)
-                </button>
-              </div>
-
-              {/* FORMATTED TRACKLIST */}
+              <span style={s.label}>Export tracklist</span>
+              <input value={setName} onChange={e => setSetName(e.target.value)} placeholder="Set name..." style={{ ...s.input, marginBottom: 12 }} />
+              <button onClick={copyTracklist} style={{ ...s.btnPrimary, background: copied ? '#1DB954' : '#1a1a1a', marginBottom: 14 }}>
+                {copied ? '✓ Copied!' : `Copy tracklist (${set.length} tracks)`}
+              </button>
               <div style={{ background: '#f7f7f5', borderRadius: 10, padding: '14px 16px', fontFamily: 'monospace', fontSize: 12, color: '#555', lineHeight: 1.8, maxHeight: 220, overflowY: 'auto' }}>
                 {setVibe && <div style={{ fontStyle: 'italic', color: '#999', marginBottom: 8, fontFamily: 'inherit' }}>"{setVibe}"</div>}
-                {set.map((t, i) => {
-                  const artists = (t.artists || []).map(a => a.name).join(', ')
-                  const bpm = t._bpm ? ` · ${t._bpm} BPM` : ''
-                  const key = t._key ? ` · ${t._key}` : ''
-                  return (
-                    <div key={t.id + i} style={{ marginBottom: 2 }}>
-                      <span style={{ color: '#bbb', minWidth: 24, display: 'inline-block' }}>{i + 1}.</span>
-                      <span style={{ fontWeight: 500, color: '#1a1a1a' }}>{artists}</span>
-                      <span style={{ color: '#777' }}> — {t.name}</span>
-                      <span style={{ color: '#bbb' }}>{bpm}{key}</span>
-                    </div>
-                  )
-                })}
+                {set.map((t, i) => (
+                  <div key={t.id + i} style={{ marginBottom: 2 }}>
+                    <span style={{ color: '#bbb', minWidth: 24, display: 'inline-block' }}>{i + 1}.</span>
+                    <span style={{ fontWeight: 500, color: '#1a1a1a' }}>{(t.artists || []).map(a => a.name).join(', ')}</span>
+                    <span style={{ color: '#777' }}> — {t.name}</span>
+                    {t._bpm && <span style={{ color: '#bbb' }}> · {t._bpm} BPM</span>}
+                    {t._key && <span style={{ color: '#bbb' }}> · {t._key}</span>}
+                  </div>
+                ))}
               </div>
-
-              {/* SEARCH ON SPOTIFY LINK */}
-              <div style={{ marginTop: 14, padding: '12px 14px', background: '#E1F5EE', borderRadius: 10, fontSize: 12, color: '#0F6E56', lineHeight: 1.6 }}>
-                <div style={{ fontWeight: 500, marginBottom: 4 }}>Add to Spotify manually:</div>
-                <div>1. Open Spotify → Create a new playlist</div>
-                <div>2. Search for each track and add it</div>
-                <div style={{ marginTop: 6, color: '#5DCAA5' }}>
-                  Or apply for Extended Access at developer.spotify.com to enable automatic saving.
-                </div>
+              <div style={{ marginTop: 12, padding: '12px 14px', background: '#E1F5EE', borderRadius: 10, fontSize: 12, color: '#0F6E56', lineHeight: 1.6 }}>
+                <div style={{ fontWeight: 500, marginBottom: 4 }}>Add to Spotify:</div>
+                <div>Copy the tracklist above, then search each track in Spotify and add to a new playlist.</div>
+                <div style={{ marginTop: 6, color: '#5DCAA5', fontSize: 11 }}>Automatic saving coming soon via Spotify Extended Access.</div>
               </div>
             </div>
 
-            {/* REBUILD */}
-            <button onClick={() => { setScreen('setup'); setSaveStatus(''); setSaveResult(null) }}
-              style={{ ...s.btn, width: '100%', fontSize: 13, padding: '11px', textAlign: 'center' }}>
+            <button onClick={() => setScreen('setup')} style={{ ...s.btn, width: '100%', fontSize: 13, padding: '11px', textAlign: 'center' }}>
               ← Build a different set
             </button>
           </div>
@@ -873,7 +657,6 @@ ${'─'.repeat(40)}
 
       </div>
 
-      {/* TOAST */}
       {toast && (
         <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#1a1a1a', color: '#fff', padding: '9px 20px', borderRadius: 22, fontSize: 13, zIndex: 100, whiteSpace: 'nowrap' }}>
           {toast}
