@@ -167,15 +167,35 @@ export default function App() {
 
   // ── PARSE TOKEN FROM URL ─────────────────────────────────────────
   useEffect(() => {
+    // Read token from cookie (set by server at login)
+    const getCookie = name => {
+      const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'))
+      return match ? match[2] : null
+    }
+    
     const hash = window.location.hash.substring(1)
     if (hash) {
       const p = new URLSearchParams(hash)
-      const at = p.get('access_token'), rt = p.get('refresh_token'), ia = p.get('issued_at')
-      if (at) {
-        setToken(at)
-        if (rt) setRefreshToken(rt)
-        if (ia) setIssuedAt(parseInt(ia))
+      if (p.get('logged_in') === 'true') {
+        // Token is in cookie, read it from there
+        const at = getCookie('sp_access_token')
+        const rt = getCookie('sp_refresh_token')
+        const ia = p.get('issued_at')
+        if (at) {
+          setToken(at)
+          if (rt) setRefreshToken(rt)
+          if (ia) setIssuedAt(parseInt(ia))
+        }
         window.history.replaceState({}, '', '/')
+      } else {
+        // Legacy hash token support
+        const at = p.get('access_token'), rt = p.get('refresh_token'), ia = p.get('issued_at')
+        if (at) {
+          setToken(at)
+          if (rt) setRefreshToken(rt)
+          if (ia) setIssuedAt(parseInt(ia))
+          window.history.replaceState({}, '', '/')
+        }
       }
     }
     const urlParams = new URLSearchParams(window.location.search)
@@ -352,62 +372,28 @@ export default function App() {
     setSaveStatus('saving')
     setSaveError('')
     try {
-      // Save directly from browser using user token — bypasses server permission issues
-      const activeToken = await getValidToken()
+      // Get the current live token — do NOT refresh, use exactly what the browser has
+      const activeToken = token
 
-      // Step 1: Create playlist directly from browser
-      const createRes = await fetch('https://api.spotify.com/v1/me/playlists', {
+      const res = await fetch('/api/save-set', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${activeToken}`,
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: setName || `wave. DJ Set · ${new Date().toLocaleDateString()}`,
-          public: false,
-          description: setVibe || eventDesc || 'Built with wave. DJ',
+          tracks: set,
+          setName,
+          eventDescription: eventDesc,
+          vibe: setVibe,
+          token: token,
         }),
       })
 
-      if (!createRes.ok) {
-        const err = await createRes.json()
-        setSaveError(`Failed to create playlist: ${err?.error?.message || createRes.status}. Please log out and log back in.`)
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        setSaveError(data.error || 'Save failed — please try again')
         setSaveStatus('error')
         return
       }
-
-      const playlist = await createRes.json()
-
-      // Step 2: Add tracks in chunks of 100
-      const validUris = set.map(t => t?.uri).filter(uri => uri && uri.startsWith('spotify:track:'))
-      let addedCount = 0
-
-      for (let i = 0; i < validUris.length; i += 100) {
-        const chunk = validUris.slice(i, i + 100)
-        const addRes = await fetch(`https://api.spotify.com/v1/playlists/${playlist.id}/tracks`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${activeToken}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ uris: chunk }),
-        })
-        if (addRes.ok) addedCount += chunk.length
-      }
-
-      if (addedCount === 0) {
-        setSaveError('Playlist created but no tracks added. Please log out, log back in, and try again.')
-        setSaveStatus('error')
-        return
-      }
-
-      setSaveResult({
-        success: true,
-        playlistUrl: playlist.external_urls?.spotify,
-        tracksAdded: addedCount,
-        tracksTotal: validUris.length,
-        verified: true,
-      })
+      setSaveResult(data)
       setSaveStatus('saved')
     } catch (e) {
       setSaveError(`Connection error: ${e.message}`)
